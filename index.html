@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>$10 to $100 Dynamic Trading Challenge</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Firebase Compat Libraries -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .input-field { background: #1e293b; border: 1px solid #334155; color: #f8fafc; outline: none; transition: border-color 0.2s; }
+    .input-field:focus { border-color: #3b82f6; }
+  </style>
+</head>
+<body class="min-h-screen pb-12">
+
+  <!-- TOP BAR / HEADER -->
+  <header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-50 backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg">
+          <i class="fa-solid fa-chart-line text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">$10 &rarr; $100 Trading Challenge</h1>
+          <p class="text-xs text-slate-400">Dynamic Risk Compounding Plan (1:4 RR)</p>
+        </div>
+      </div>
+
+      <!-- GOOGLE AUTH CONTROLS -->
+      <div id="auth-container" class="flex items-center gap-3">
+        <div id="user-profile" class="hidden flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+          <img id="user-avatar" src="" alt="User" class="w-6 h-6 rounded-full" />
+          <span id="user-name" class="text-xs font-medium text-slate-200"></span>
+          <button onclick="logoutGoogle()" class="text-xs text-red-400 hover:text-red-300 ml-1"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+        <button id="login-btn" onclick="loginGoogle()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium px-4 py-2 rounded-lg border border-slate-700 transition">
+          <i class="fa-brands fa-google text-red-400"></i>
+          <span>Sign In with Google</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 pt-6 space-y-6">
+
+    <!-- DASHBOARD SUMMARY CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="glass-card p-4 rounded-xl">
+        <span class="text-xs text-slate-400 font-medium">Account Balance</span>
+        <div id="account-balance" class="text-2xl font-bold text-emerald-400 mt-1">$10.00</div>
+        <span id="account-growth" class="text-xs text-emerald-500 font-medium">+0.0% overall</span>
+      </div>
+
+      <div class="glass-card p-4 rounded-xl">
+        <span class="text-xs text-slate-400 font-medium">Next Trade Risk</span>
+        <div id="next-risk" class="text-2xl font-bold text-blue-400 mt-1">$2.00</div>
+        <span id="streak-count" class="text-xs text-slate-400">Streak: 0 wins</span>
+      </div>
+
+      <div class="glass-card p-4 rounded-xl">
+        <span class="text-xs text-slate-400 font-medium">Win Rate</span>
+        <div id="win-rate" class="text-2xl font-bold text-purple-400 mt-1">0%</div>
+        <span id="win-loss-count" class="text-xs text-slate-400">0 W - 0 L</span>
+      </div>
+
+      <div class="glass-card p-4 rounded-xl">
+        <span class="text-xs text-slate-400 font-medium">Target Progress</span>
+        <div id="target-progress" class="text-2xl font-bold text-amber-400 mt-1">10%</div>
+        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+          <div id="target-bar" class="bg-amber-400 h-full w-[10%] transition-all"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN GRID: TRADE LOG & BALANCE CHART -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- LOG TRADE INPUT FORM -->
+      <div class="glass-card p-5 rounded-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-plus-circle text-blue-400"></i> Log New Trade
+          </h2>
+          <span class="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">Calculator</span>
+        </div>
+
+        <form id="trade-form" onsubmit="handleTradeSubmit(event)" class="space-y-4">
+          <!-- EMBEDDED LOT SIZE CALCULATOR -->
+          <div class="space-y-3 bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Asset Pair</label>
+                <select id="trade-asset" onchange="calculateLotSize()" class="w-full px-3 py-2 rounded-lg input-field text-sm">
+                  <option value="EUR/USD">EUR/USD (Forex)</option>
+                  <option value="XAU/USD">XAU/USD (Gold)</option>
+                </select>
+              </div>
+              <div>
+                <label id="sl-label" class="block text-xs text-slate-400 mb-1">Stop Loss (Pips)</label>
+                <input type="number" id="trade-sl" value="20" min="1" step="1" oninput="calculateLotSize()" class="w-full px-3 py-2 rounded-lg input-field text-sm" />
+              </div>
+            </div>
+
+            <!-- CALCULATED LOT SIZE DISPLAY -->
+            <div class="flex items-center justify-between bg-slate-900/80 px-3 py-2 rounded border border-slate-700/70">
+              <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                <i class="fa-solid fa-calculator text-blue-400"></i> Recommended Lot:
+              </span>
+              <span id="recommended-lot" class="text-sm font-bold text-emerald-400">0.01 Lot</span>
+            </div>
+          </div>
+
+          <!-- MANUAL RISK AMOUNT INPUT -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Applied Risk ($)</label>
+            <div class="relative">
+              <span class="absolute left-3 top-2.5 text-slate-500 text-sm">$</span>
+              <input type="number" step="0.10" min="0.50" id="trade-risk" required value="2.00" oninput="calculateLotSize()" class="w-full pl-7 pr-3 py-2 rounded-lg input-field text-sm font-semibold text-blue-400" />
+            </div>
+          </div>
+
+          <!-- Outcome Selection -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Trade Outcome</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" id="btn-outcome-win" onclick="setOutcome('WIN')" class="py-2 rounded-lg text-sm font-semibold bg-emerald-600/30 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600/40 transition">
+                <i class="fa-solid fa-circle-check mr-1"></i> WIN
+              </button>
+              <button type="button" id="btn-outcome-loss" onclick="setOutcome('LOSS')" class="py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition">
+                <i class="fa-solid fa-circle-xmark mr-1"></i> LOSS
+              </button>
+            </div>
+          </div>
+
+          <!-- PROFIT / LOSS CALCULATION MODE & INPUT -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs text-slate-400">Actual PnL ($)</label>
+              <select id="pnl-mode" onchange="togglePnlMode()" class="text-[11px] bg-slate-800 text-slate-300 rounded px-1.5 py-0.5 border border-slate-700 outline-none">
+                <option value="auto">Auto (1:4 RR)</option>
+                <option value="custom">Custom $ Amount</option>
+              </select>
+            </div>
+
+            <div class="relative">
+              <span class="absolute left-3 top-2.5 text-slate-500 text-sm">$</span>
+              <input type="number" step="0.10" id="trade-pnl" required value="8.00" class="w-full pl-7 pr-3 py-2 rounded-lg input-field text-sm font-semibold text-emerald-400" />
+            </div>
+          </div>
+
+          <!-- Notes Input -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Trade Notes / Strategy Setup</label>
+            <input type="text" id="trade-notes" placeholder="e.g. 1H Support bounce" class="w-full px-3 py-2 rounded-lg input-field text-sm" />
+          </div>
+
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow-lg shadow-blue-600/20">
+            Submit Trade Entry
+          </button>
+        </form>
+      </div>
+
+      <!-- BALANCE GROWTH CHART -->
+      <div class="glass-card p-5 rounded-xl lg:col-span-2 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-chart-area text-emerald-400"></i> Balance History Curve
+          </h2>
+          <button onclick="resetAccountData()" class="text-xs text-slate-400 hover:text-red-400 transition">
+            <i class="fa-solid fa-rotate-left mr-1"></i> Reset Data
+          </button>
+        </div>
+        <div class="flex-1 min-h-[260px] relative">
+          <canvas id="balanceChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATEGY COMPARISON SIMULATION -->
+    <div class="glass-card p-5 rounded-xl">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div>
+          <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-amber-400"></i> Interactive Strategy Simulator
+          </h2>
+          <p class="text-xs text-slate-400">Comparing 2x Compounding vs. Static $2 Risk</p>
+        </div>
+      </div>
+      <div class="h-64 relative">
+        <canvas id="simChart"></canvas>
+      </div>
+    </div>
+
+    <!-- TRADE HISTORY TABLE / CARDS -->
+    <div class="glass-card p-5 rounded-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-purple-400"></i> Trade History Log
+        </h2>
+        <div class="flex items-center gap-2">
+          <button onclick="filterTrades('ALL')" class="px-3 py-1 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">All</button>
+          <button onclick="filterTrades('WIN')" class="px-3 py-1 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">Wins</button>
+          <button onclick="filterTrades('LOSS')" class="px-3 py-1 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">Losses</button>
+        </div>
+      </div>
+
+      <!-- DESKTOP TABLE -->
+      <div class="hidden md:block overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-xs text-slate-400 uppercase">
+              <th class="py-3 px-3">#</th>
+              <th class="py-3 px-3">Asset</th>
+              <th class="py-3 px-3">Outcome</th>
+              <th class="py-3 px-3">Risk ($)</th>
+              <th class="py-3 px-3">PnL ($)</th>
+              <th class="py-3 px-3">Balance ($)</th>
+              <th class="py-3 px-3">Notes</th>
+              <th class="py-3 px-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="trade-table-body" class="text-sm divide-y divide-slate-800/60">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- MOBILE CARDS -->
+      <div id="trade-cards-container" class="md:hidden space-y-3">
+        <!-- Dynamic Mobile Cards -->
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // --- APP STATE & INITIALIZATION ---
+    let trades = [];
+    let initialBalance = 10.00;
+    let selectedOutcome = 'WIN';
+    let activeFilter = 'ALL';
+    let balanceChart = null;
+    let simChart = null;
+    let currentUser = null;
+
+    // --- FIREBASE CONFIGURATION (Replace with your actual Firebase project keys if using Google Auth) ---
+    const firebaseConfig = {
+      apiKey: "FIREBASE_API_KEY",
+      authDomain: "PROJECT.firebaseapp.com",
+      projectId: "PROJECT_ID",
+      storageBucket: "PROJECT.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+
+    let db = null;
+    let auth = null;
+    try {
+      if (firebaseConfig.apiKey !== "FIREBASE_API_KEY") {
+        firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth();
+        db = firebase.firestore();
+      }
+    } catch(e) { console.log("Firebase initialized in offline fallback mode."); }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadLocalData();
+      initCharts();
+      calculateLotSize();
+      updateAppUI();
+
+      if (auth) {
+        auth.onAuthStateChanged(user => {
+          currentUser = user;
+          const loginBtn = document.getElementById('login-btn');
+          const userProfile = document.getElementById('user-profile');
+          if (user) {
+            loginBtn.classList.add('hidden');
+            userProfile.classList.remove('hidden');
+            document.getElementById('user-avatar').src = user.photoURL || '';
+            document.getElementById('user-name').textContent = user.displayName || 'User';
+            fetchCloudData(user.uid);
+          } else {
+            loginBtn.classList.remove('hidden');
+            userProfile.classList.add('hidden');
+          }
+        });
+      }
+    });
+
+    // --- LOT SIZE CALCULATOR LOGIC ---
+    function calculateLotSize() {
+      const asset = document.getElementById('trade-asset').value;
+      const risk = parseFloat(document.getElementById('trade-risk').value) || 2.00;
+      const slInput = parseFloat(document.getElementById('trade-sl').value) || 1;
+      const slLabel = document.getElementById('sl-label');
+      const lotDisplay = document.getElementById('recommended-lot');
+
+      let lotSize = 0;
+      if (asset === 'EUR/USD') {
+        slLabel.textContent = 'Stop Loss (Pips)';
+        lotSize = risk / (slInput * 10);
+      } else if (asset === 'XAU/USD') {
+        slLabel.textContent = 'Stop Loss ($ Distance)';
+        lotSize = risk / (slInput * 100);
+      }
+
+      const formattedLot = Math.max(0.01, lotSize).toFixed(2);
+      lotDisplay.textContent = `${formattedLot} Lot`;
+      recalculatePnl();
+    }
+
+    // --- DYNAMIC RISK & OUTCOME LOGIC ---
+    function getNextRisk() {
+      let streak = 0;
+      for (let i = trades.length - 1; i >= 0; i--) {
+        if (trades[i].outcome === 'WIN') streak++;
+        else break;
+      }
+      return 2.00 * Math.pow(2, streak);
+    }
+
+    function setOutcome(outcome) {
+      selectedOutcome = outcome;
+      const winBtn = document.getElementById('btn-outcome-win');
+      const lossBtn = document.getElementById('btn-outcome-loss');
+      const pnlInput = document.getElementById('trade-pnl');
+
+      if (outcome === 'WIN') {
+        winBtn.className = "py-2 rounded-lg text-sm font-semibold bg-emerald-600/30 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-600/40 transition";
+        lossBtn.className = "py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition";
+        pnlInput.className = "w-full pl-7 pr-3 py-2 rounded-lg input-field text-sm font-semibold text-emerald-400";
+      } else {
+        lossBtn.className = "py-2 rounded-lg text-sm font-semibold bg-red-600/30 text-red-400 border border-red-500/50 hover:bg-red-600/40 transition";
+        winBtn.className = "py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition";
+        pnlInput.className = "w-full pl-7 pr-3 py-2 rounded-lg input-field text-sm font-semibold text-red-400";
+      }
+      recalculatePnl();
+    }
+
+    function recalculatePnl() {
+      const mode = document.getElementById('pnl-mode').value;
+      if (mode === 'auto') {
+        const currentRisk = parseFloat(document.getElementById('trade-risk').value) || 2.00;
+        document.getElementById('trade-pnl').value = selectedOutcome === 'WIN' 
+          ? (currentRisk * 4).toFixed(2) 
+          : (-currentRisk).toFixed(2);
+      }
+    }
+
+    function togglePnlMode() {
+      recalculatePnl();
+    }
+
+    // --- SUBMIT NEW TRADE ENTRY ---
+    function handleTradeSubmit(e) {
+      e.preventDefault();
+      const asset = document.getElementById('trade-asset').value;
+      const risk = parseFloat(document.getElementById('trade-risk').value) || 2.00;
+      const pnl = parseFloat(document.getElementById('trade-pnl').value) || 0.00;
+      const notes = document.getElementById('trade-notes').value.trim();
+
+      const lastBalance = trades.length > 0 ? trades[trades.length - 1].balance : initialBalance;
+      const newBalance = Math.max(0, lastBalance + pnl);
+
+      const trade = {
+        id: Date.now(),
+        asset: asset,
+        outcome: selectedOutcome,
+        risk: risk,
+        pnl: pnl,
+        balance: newBalance,
+        notes: notes
+      };
+
+      trades.push(trade);
+      saveData();
+      updateAppUI();
+
+      document.getElementById('trade-notes').value = '';
+      document.getElementById('trade-risk').value = getNextRisk().toFixed(2);
+      setOutcome('WIN');
+      calculateLotSize();
+    }
+
+    // --- DELETE TRADE ENTRY ---
+    function deleteTrade(id) {
+      trades = trades.filter(t => t.id !== id);
+      let current = initialBalance;
+      trades.forEach(t => {
+        current = Math.max(0, current + t.pnl);
+        t.balance = current;
+      });
+      saveData();
+      updateAppUI();
+    }
+
+    // --- RESET ALL DATA ---
+    function resetAccountData() {
+      if (confirm("Are you sure you want to reset all trade history to start over at $10.00?")) {
+        trades = [];
+        saveData();
+        updateAppUI();
+      }
+    }
+
+    // --- UI UPDATER ---
+    function updateAppUI() {
+      const currentBalance = trades.length > 0 ? trades[trades.length - 1].balance : initialBalance;
+      const nextRisk = getNextRisk();
+      
+      let streak = 0;
+      for (let i = trades.length - 1; i >= 0; i--) {
+        if (trades[i].outcome === 'WIN') streak++;
+        else break;
+      }
+
+      const wins = trades.filter(t => t.outcome === 'WIN').length;
+      const losses = trades.filter(t => t.outcome === 'LOSS').length;
+      const winRate = trades.length > 0 ? ((wins / trades.length) * 100).toFixed(0) : 0;
+      const growthPct = (((currentBalance - initialBalance) / initialBalance) * 100).toFixed(1);
+
+      document.getElementById('account-balance').textContent = `$${currentBalance.toFixed(2)}`;
+      document.getElementById('account-growth').textContent = `${growthPct >= 0 ? '+' : ''}${growthPct}% overall`;
+      document.getElementById('next-risk').textContent = `$${nextRisk.toFixed(2)}`;
+      document.getElementById('streak-count').textContent = `Streak: ${streak} consecutive win${streak === 1 ? '' : 's'}`;
+      document.getElementById('win-rate').textContent = `${winRate}%`;
+      document.getElementById('win-loss-count').textContent = `${wins} W - ${losses} L`;
+      
+      const targetPct = Math.min(100, Math.max(0, (currentBalance / 100) * 100)).toFixed(0);
+      document.getElementById('target-progress').textContent = `${targetPct}%`;
+      document.getElementById('target-bar').style.width = `${targetPct}%`;
+
+      renderTables();
+      updateCharts();
+    }
+
+    // --- TABLE & CARD RENDERER ---
+    function renderTables() {
+      const tbody = document.getElementById('trade-table-body');
+      const cardContainer = document.getElementById('trade-cards-container');
+      tbody.innerHTML = '';
+      cardContainer.innerHTML = '';
+
+      const filtered = trades.filter(t => activeFilter === 'ALL' || t.outcome === activeFilter);
+
+      filtered.forEach((t, index) => {
+        const isWin = t.outcome === 'WIN';
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-3 px-3 text-slate-400">#${index + 1}</td>
+          <td class="py-3 px-3 font-semibold text-slate-200">${t.asset}</td>
+          <td class="py-3 px-3">
+            <span class="px-2 py-0.5 rounded text-xs font-bold ${isWin ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">
+              ${t.outcome}
+            </span>
+          </td>
+          <td class="py-3 px-3 text-slate-300">$${t.risk.toFixed(2)}</td>
+          <td class="py-3 px-3 font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}">
+            ${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}
+          </td>
+          <td class="py-3 px-3 text-slate-200 font-semibold">$${t.balance.toFixed(2)}</td>
+          <td class="py-3 px-3 text-xs text-slate-400">${t.notes || '-'}</td>
+          <td class="py-3 px-3 text-right">
+            <button onclick="deleteTrade(${t.id})" class="text-xs text-slate-500 hover:text-red-400 transition">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+
+        const card = document.createElement('div');
+        card.className = "bg-slate-800/60 border border-slate-700/60 p-3 rounded-lg flex justify-between items-center";
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-200 text-sm">${t.asset}</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isWin ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">${t.outcome}</span>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">Risk: $${t.risk.toFixed(2)} | Balance: $${t.balance.toFixed(2)}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-bold text-sm ${isWin ? 'text-emerald-400' : 'text-red-400'}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}</div>
+            <button onclick="deleteTrade(${t.id})" class="text-xs text-slate-500 hover:text-red-400 mt-1">Delete</button>
+          </div>
+        `;
+        cardContainer.appendChild(card);
+      });
+    }
+
+    function filterTrades(filter) {
+      activeFilter = filter;
+      renderTables();
+    }
+
+    // --- CHART.JS INITIALIZATION & UPDATES ---
+    function initCharts() {
+      const ctx1 = document.getElementById('balanceChart').getContext('2d');
+      balanceChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: ['Start'],
+          datasets: [{
+            label: 'Account Balance ($)',
+            data: [initialBalance],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      const ctx2 = document.getElementById('simChart').getContext('2d');
+      simChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: ['Start', 'Win 1', 'Win 2', 'Win 3', 'Win 4'],
+          datasets: [
+            {
+              label: 'Dynamic Risk (2x per Win)',
+              data: [10, 18, 34, 66, 130],
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              fill: true
+            },
+            {
+              label: 'Static Risk (Fixed $2)',
+              data: [10, 18, 26, 34, 42],
+              borderColor: '#94a3b8',
+              borderDash: [5, 5]
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#cbd5e1' } } },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    function updateCharts() {
+      if (!balanceChart) return;
+      const labels = ['Start', ...trades.map((_, i) => `Trade #${i + 1}`)];
+      const data = [initialBalance, ...trades.map(t => t.balance)];
+
+      balanceChart.data.labels = labels;
+      balanceChart.data.datasets[0].data = data;
+      balanceChart.update();
+    }
+
+    // --- DATA STORAGE & CLOUD SYNC ---
+    function saveData() {
+      localStorage.setItem('trading_challenge_trades', JSON.stringify(trades));
+      if (currentUser && db) {
+        db.collection('users').doc(currentUser.uid).set({
+          trades: trades,
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(err => console.error("Cloud Save Error:", err));
+      }
+    }
+
+    function loadLocalData() {
+      const saved = localStorage.getItem('trading_challenge_trades');
+      if (saved) {
+        try { trades = JSON.parse(saved); } catch(e) {}
+      }
+    }
+
+    function fetchCloudData(userId) {
+      if (!db) return;
+      db.collection('users').doc(userId).get().then(doc => {
+        if (doc.exists && doc.data().trades) {
+          trades = doc.data().trades;
+          saveData();
+          updateAppUI();
+        }
+      }).catch(err => console.error("Cloud Fetch Error:", err));
+    }
+
+    function loginGoogle() {
+      if (!auth) {
+        alert("To enable Google Auth, configure your Firebase keys inside index.html.");
+        return;
+      }
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider);
+    }
+
+    function logoutGoogle() {
+      if (auth) auth.signOut();
+    }
+  </script>
+</body>
+</html>
